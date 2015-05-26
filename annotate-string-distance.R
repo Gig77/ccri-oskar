@@ -1,7 +1,7 @@
 library("STRINGdb")
 library("biomaRt")
 
-v <- read.delim("~/oskar/results/filtered-variants/StA.tsv")
+v <- read.delim("/mnt/projects/oskar/results/filtered-variants/StA.tsv")
 
 db <- STRINGdb$new(version="9_1", species=9606, score_threshold=400)
 
@@ -22,4 +22,4 @@ result$string_1st_degree <- apply(result, 1, function(x) paste(na.omit(x[2:3]),c
 
 v <- merge(v, result[,c("gene", "string_1st_degree")], by.x="gene", by.y="gene", all.x=T)
 
-write.table(v, file="~/oskar/results/filtered-variants/StA.string.tsv", col.names=T, row.names=F, sep="\t", quote=F)
+write.table(v, file="/mnt/projects/oskar/results/filtered-variants/StA.string.tsv", col.names=T, row.names=F, sep="\t", quote=F)
