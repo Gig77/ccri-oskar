@@ -1,7 +1,7 @@
 use warnings FATAL => qw( all );
 use strict;
 
-use lib "$ENV{HOME}/generic/scripts";
+use lib "/mnt/projects/generic/scripts";
 use Generic;
 use Log::Log4perl qw(:easy);
 use List::Util qw(min max);
@@ -125,7 +125,7 @@ my $patient_sample = "Sample1";
 
 # read kgXref, knownCanonical to determine UCSC canonical transcripts affected by variant
 my %kgID2refSeq;
-open(G,"$ENV{HOME}/generic/data/hg19/hg19.kgXref.txt") or die "could not open file $ENV{HOME}/generic/data/hg19/hg19.kgXref.txt";
+open(G,"/mnt/projects/generic/data/hg19/hg19.kgXref.txt") or die "could not open file /mnt/projects/generic/data/hg19/hg19.kgXref.txt";
 while(<G>)
 {
 	chomp;
@@ -134,10 +134,10 @@ while(<G>)
 	$kgID2refSeq{$kgID} = $refSeq if ($refSeq);
 }
 close(G);
-INFO(scalar(keys(%kgID2refSeq))." gene descriptions read from file $ENV{HOME}/generic/data/hg19/hg19.kgXref.txt");
+INFO(scalar(keys(%kgID2refSeq))." gene descriptions read from file /mnt/projects/generic/data/hg19/hg19.kgXref.txt");
 
 my %canonical;
-open(G,"$ENV{HOME}/generic/data/hg19/hg19.knownCanonical.txt") or die "could not open file $ENV{HOME}/generic/data/hg19/hg19.knownCanonical.txt";
+open(G,"/mnt/projects/generic/data/hg19/hg19.knownCanonical.txt") or die "could not open file /mnt/projects/generic/data/hg19/hg19.knownCanonical.txt";
 <G>; # skip header
 while(<G>)
 {
@@ -147,7 +147,7 @@ while(<G>)
 	$canonical{$kgID2refSeq{$transcript}} = 1 if ($kgID2refSeq{$transcript});
 }
 close(G);
-INFO(scalar(keys(%canonical))." canonical genes read from file $ENV{HOME}/generic/data/hg19/hg19.knownCanonical.txt");
+INFO(scalar(keys(%canonical))." canonical genes read from file /mnt/projects/generic/data/hg19/hg19.knownCanonical.txt");
 
 # read cosmic mutations
 my (%cosmic, %cosmic_leuk);
@@ -423,6 +423,7 @@ while (my $line = $vcf->next_line())
 
 	# ----- get variant AF from mother	
 	my ($ad_mother_ref, $ad_mother_alt, $dp_mother, $freq_mother);
+	if ($mother)
 	{
 		my $iter = $mother->query($x->{CHROM}, $pos-1, $pos);
 		if ($iter and $iter->{_})
@@ -450,6 +451,7 @@ while (my $line = $vcf->next_line())
 
 	# ----- get variant AF from father	
 	my ($ad_father_ref, $ad_father_alt, $dp_father, $freq_father);
+	if ($father)
 	{
 		my $iter = $father->query($x->{CHROM}, $pos-1, $pos);
 		if ($iter and $iter->{_})
