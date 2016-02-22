@@ -4,7 +4,7 @@ SHELL=/bin/bash  # required to make pipefail work
 
 LOG = perl -ne 'use POSIX qw(strftime); $$|=1; print strftime("%F %02H:%02M:%S ", localtime), $$ARGV[0], "$@: $$_";'
 
-SAMPLES=14_0152 14_0174 14_0291 StA_BS StA_ES StA_SS 15_0587 15_0366 08_0361 15_0763
+SAMPLES=14_0152 14_0174 14_0291 StA_BS StA_ES StA_SS 15_0587 15_0366 08_0361 15_0763 15_0709 13_0683
 SAMPLES_SURESELECTXT=15_0587 15_0366 08_0361
 
 all: bwa picard gatk varscan snpeff filtered-variants
