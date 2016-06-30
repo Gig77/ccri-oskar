@@ -4,8 +4,12 @@ SHELL=/bin/bash  # required to make pipefail work
 
 LOG = perl -ne 'use POSIX qw(strftime); $$|=1; print strftime("%F %02H:%02M:%S ", localtime), $$ARGV[0], "$@: $$_";'
 
-SAMPLES=14_0152 14_0174 14_0291 StA_BS StA_ES StA_SS 15_0587 15_0366 08_0361 15_0763 15_0709 13_0683
-SAMPLES_SURESELECTXT=15_0587 15_0366 08_0361
+PROJECT_HOME=/mnt/projects/oskar
+DOCKER=docker run -i --rm --net=host -e DOCKER_UID=$$(id -u) -e DOCKER_UNAME=$$(id -un) -e DOCKER_GID=$$(id -g) -e DOCKER_GNAME=$$(id -gn) -e DOCKER_HOME=$$HOME -v /home:/home -v /data_synology:/data_synology -v /data:/data -v /data2:/data2 -v /data/christian/oskar/results/current:$(PROJECT_HOME)/results -v /data/christian/oskar/data:$(PROJECT_HOME)/data:ro -v /data_synology/christian/generic/data/current:/mnt/projects/generic/data:ro -w $$(pwd)
+PICARD=$(DOCKER) biowaste:5000/ccri/picard-2.2.2 java -XX:+UseParallelGC -XX:ParallelGCThreads=8 -Xmx2g -Djava.io.tmpdir=`pwd`/tmp -jar /usr/picard/picard.jar
+
+SAMPLES=14_0152 14_0174 14_0291 StA_BS StA_ES StA_SS 15_0587 15_0366 08_0361 15_0763 15_0709 13_0683 16_0054_2 16_0090 16_0177 16_0170_2 16_0223_E
+SAMPLES_SURESELECTXT=15_0587 15_0366 08_0361 15_0763 15_0709 13_0683 16_0054_2 16_0090 16_0177 16_0170_2
 
 all: bwa picard gatk varscan snpeff filtered-variants
 
@@ -35,6 +39,11 @@ download:
 #-----------	
 # ALIGNMENT, SORTING, MARK DUPLICATES, INDEXING
 #-----------
+
+/mnt/projects/oskar/data/fastq/%.gz: /mnt/projects/oskar/data/fastq/%.bz2
+	 bzip2 -cd $< | gzip > $@.part
+	 mv $@.part $@
+	 rm $<
 
 .PHONY: bwa
 bwa: $(foreach S, $(SAMPLES), bwa/$S.bwa.sorted.dupmarked.bam.bai)
@@ -108,11 +117,12 @@ gatk/%.bwa.sorted.dupmarked.realigned.bam.bai: gatk/%.bwa.sorted.dupmarked.reali
 #-----------	
 
 .PHONY: picard
-picard: $(foreach S, $(SAMPLES), picard/$S.multiplemetrics picard/$S.hs_metrics)
+picard: $(foreach S, $(SAMPLES), picard/$S.multiplemetrics) \
+        $(foreach S, $(SAMPLES_SURESELECTXT), picard/$S.agilent-sureselect.hs_metrics)
 
 picard/%.multiplemetrics: bwa/%.bwa.sorted.dupmarked.bam bwa/%.bwa.sorted.dupmarked.bam.bai
-	mkdir -p picard
-	java -XX:+UseParallelGC -XX:ParallelGCThreads=8 -Xmx2g -Djava.io.tmpdir=`pwd`/tmp -jar /data_synology/software/picard-tools-1.114/CollectMultipleMetrics.jar \
+	mkdir -p picard && rm -f $@
+	$(PICARD) CollectMultipleMetrics \
 		INPUT=$< \
 		OUTPUT=picard/$* \
 		VALIDATION_STRINGENCY=LENIENT \
@@ -123,21 +133,39 @@ picard/%.multiplemetrics: bwa/%.bwa.sorted.dupmarked.bam bwa/%.bwa.sorted.dupmar
 		2>&1 | $(LOG)
 	touch $@
 
-picard/%.hs_metrics: bwa/%.bwa.sorted.dupmarked.bam bwa/%.bwa.sorted.dupmarked.bam.bai
-	mkdir -p picard
+picard/%.illumina-truseq.hs_metrics: bwa/%.bwa.sorted.dupmarked.bam bwa/%.bwa.sorted.dupmarked.bam.bai
+	mkdir -p picard && rm -f $@
 	/data_synology/software/samtools-0.1.19/samtools view -H $< 2>&1 1> picard/$*.truseq-for-picard.bed | $(LOG)
 	gawk 'BEGIN { OFS="\t"} {print $$1,$$2,$$3,$$6,$$4 }' /mnt/projects/generic/data/illumina/truseq_exome_targeted_regions.hg19.bed >> picard/$*.truseq-for-picard.bed
-	java -XX:+UseParallelGC -XX:ParallelGCThreads=8 -Xmx2g -Djava.io.tmpdir=`pwd`/tmp -jar /data_synology/software/picard-tools-1.114/CalculateHsMetrics.jar \
+	#java -XX:+UseParallelGC -XX:ParallelGCThreads=8 -Xmx2g -Djava.io.tmpdir=`pwd`/tmp -jar /data_synology/software/picard-tools-1.114/CalculateHsMetrics.jar \
+	$(PICARD) CalculateHsMetrics \
 		BAIT_INTERVALS=picard/$*.truseq-for-picard.bed \
 		TARGET_INTERVALS=picard/$*.truseq-for-picard.bed \
 		INPUT=$< \
 		OUTPUT=$@.part \
 		REFERENCE_SEQUENCE=/mnt/projects/generic/data/broad/human_g1k_v37.fasta \
-		PER_TARGET_COVERAGE=picard/$*.hs_metrics.per_target_coverage.part \
+		PER_TARGET_COVERAGE=picard/$*.illumina-truseq.hs_metrics.per_target_coverage.part \
 		VALIDATION_STRINGENCY=LENIENT \
 		2>&1 | $(LOG)
-	mv picard/$*.hs_metrics.per_target_coverage.part picard/$*.hs_metrics.per_target_coverage
 	rm picard/$*.truseq-for-picard.bed
+	mv picard/$*.illumina-truseq.hs_metrics.per_target_coverage.part picard/$*.illumina-truseq.hs_metrics.per_target_coverage
+	mv $@.part $@
+
+picard/%.agilent-sureselect.hs_metrics: bwa/%.bwa.sorted.dupmarked.bam bwa/%.bwa.sorted.dupmarked.bam.bai /mnt/projects/generic/data/agilent/S06588914_Covered.SureSelectXTHumanAllExonV5andClinical.nochr.bed
+	mkdir -p picard && rm -f $@
+	/data_synology/software/samtools-0.1.19/samtools view -H $< 2>&1 1> picard/$*.agilent-for-picard.bed | $(LOG)
+	gawk 'BEGIN { OFS="\t"} {print $$1,$$2,$$3,"+",$$4 }' $(word 3,$^) >> picard/$*.agilent-for-picard.bed
+	$(PICARD) CalculateHsMetrics \
+		BAIT_INTERVALS=picard/$*.agilent-for-picard.bed \
+		TARGET_INTERVALS=picard/$*.agilent-for-picard.bed \
+		INPUT=$< \
+		OUTPUT=$@.part \
+		REFERENCE_SEQUENCE=/mnt/projects/generic/data/broad/human_g1k_v37.fasta \
+		PER_TARGET_COVERAGE=picard/$*.agilent-sureselect.hs_metrics.per_target_coverage.part \
+		VALIDATION_STRINGENCY=LENIENT \
+		2>&1 | $(LOG)
+	mv picard/$*.agilent-sureselect.hs_metrics.per_target_coverage.part picard/$*.agilent-sureselect.hs_metrics.per_target_coverage
+	rm picard/$*.agilent-for-picard.bed
 	mv $@.part $@
 
 #-----------	
@@ -262,4 +290,13 @@ filtered-variants/StA.tsv: snpeff/StA_BS.varscan.dbsnp.snpeff.dbNSFP.vcf snpeff/
 		--clinvar-file /mnt/projects/generic/data/clinvar/clinvar_20140929.vcf.gz \
 		2>&1 1> $@.part | $(LOG)
 	mv $@.part $@
-	
+
+#------------
+# PUBLISH ON WEB SERVER FOR MEDGEN TO DOWNLOAD
+#------------
+
+published/%: filtered-variants/%.tsv picard/%.agilent-sureselect.hs_metrics gatk/%.bwa.sorted.dupmarked.realigned.bam
+	mkdir -p published
+	scp $^ cf@biotrash:/var/www/html/medgen
+	ssh cf@biotrash 'mv /var/www/html/medgen/$*.tsv /var/www/html/medgen/$*.xls'
+	touch $@
